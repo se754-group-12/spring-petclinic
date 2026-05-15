@@ -107,14 +107,7 @@ class PetController {
 	public String processCreationForm(Owner owner, @Valid Pet pet, BindingResult result,
 			RedirectAttributes redirectAttributes) {
 
-		if (StringUtils.hasText(pet.getName()) && pet.isNew() && owner.getPet(pet.getName(), true) != null) {
-			result.rejectValue("name", "duplicate", "already exists");
-		}
-
-		LocalDate currentDate = LocalDate.now();
-		if (pet.getBirthDate() != null && pet.getBirthDate().isAfter(currentDate)) {
-			result.rejectValue("birthDate", "typeMismatch.birthDate");
-		}
+		validatePet(pet, owner, true, result);
 
 		if (result.hasErrors()) {
 			return VIEWS_PETS_CREATE_OR_UPDATE_FORM;
@@ -135,20 +128,7 @@ class PetController {
 	public String processUpdateForm(Owner owner, @Valid Pet pet, BindingResult result,
 			RedirectAttributes redirectAttributes) {
 
-		String petName = pet.getName();
-
-		// checking if the pet name already exists for the owner
-		if (StringUtils.hasText(petName)) {
-			Pet existingPet = owner.getPet(petName, false);
-			if (existingPet != null && !Objects.equals(existingPet.getId(), pet.getId())) {
-				result.rejectValue("name", "duplicate", "already exists");
-			}
-		}
-
-		LocalDate currentDate = LocalDate.now();
-		if (pet.getBirthDate() != null && pet.getBirthDate().isAfter(currentDate)) {
-			result.rejectValue("birthDate", "typeMismatch.birthDate");
-		}
+		validatePet(pet, owner, false, result);
 
 		if (result.hasErrors()) {
 			return VIEWS_PETS_CREATE_OR_UPDATE_FORM;
@@ -157,6 +137,25 @@ class PetController {
 		updatePetDetails(owner, pet);
 		redirectAttributes.addFlashAttribute("message", "Pet details has been edited");
 		return "redirect:/owners/{ownerId}";
+	}
+
+	private void validatePet(Pet pet, Owner owner, boolean isNew, BindingResult result) {
+		if (StringUtils.hasText(pet.getName())) {
+			Pet existing = owner.getPet(pet.getName(), isNew);
+			if (isDuplicateName(existing, pet, isNew)) {
+				result.rejectValue("name", "duplicate", "already exists");
+			}
+		}
+		if (pet.getBirthDate() != null && pet.getBirthDate().isAfter(LocalDate.now())) {
+			result.rejectValue("birthDate", "typeMismatch.birthDate");
+		}
+	}
+
+	private boolean isDuplicateName(Pet existing, Pet pet, boolean isNew) {
+		if (existing == null) {
+			return false;
+		}
+		return isNew ? pet.isNew() : !Objects.equals(existing.getId(), pet.getId());
 	}
 
 	/**
