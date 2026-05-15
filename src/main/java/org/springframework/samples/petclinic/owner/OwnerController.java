@@ -94,28 +94,25 @@ class OwnerController {
 	@GetMapping("/owners")
 	public String processFindForm(@RequestParam(defaultValue = "1") int page, Owner owner, BindingResult result,
 			Model model) {
-		// allow parameterless GET request for /owners to return all records
-		String lastName = owner.getLastName();
-		if (lastName == null) {
-			lastName = ""; // empty string signifies broadest possible search
-		}
-
-		// find owners by last name
+		String lastName = Optional.ofNullable(owner.getLastName()).orElse("");
 		Page<Owner> ownersResults = findPaginatedForOwnersLastName(page, lastName);
+
 		if (ownersResults.isEmpty()) {
-			// no owners found
-			result.rejectValue("lastName", "notFound", "not found");
-			return "owners/findOwners";
+			return handleNoOwnersFound(result);
 		}
-
 		if (ownersResults.getTotalElements() == 1) {
-			// 1 owner found
-			owner = ownersResults.iterator().next();
-			return "redirect:/owners/" + owner.getId();
+			return redirectToOwner(ownersResults.iterator().next());
 		}
-
-		// multiple owners found
 		return addPaginationModel(page, model, ownersResults);
+	}
+
+	private String handleNoOwnersFound(BindingResult result) {
+		result.rejectValue("lastName", "notFound", "not found");
+		return "owners/findOwners";
+	}
+
+	private String redirectToOwner(Owner owner) {
+		return "redirect:/owners/" + owner.getId();
 	}
 
 	private String addPaginationModel(int page, Model model, Page<Owner> paginated) {
