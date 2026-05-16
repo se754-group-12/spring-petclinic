@@ -22,10 +22,45 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 /**
- * Repository class for <code>Owner</code> domain objects. All method names are compliant
- * with Spring Data naming conventions so this interface can easily be extended for Spring
- * Data. See:
- * https://docs.spring.io/spring-data/jpa/docs/current/reference/html/#repositories.query-methods.query-creation
+ * Spring Data JPA repository for the {@link Owner} aggregate.
+ *
+ * <p>
+ * This repository acts as the persistence-layer entry point for the {@code Owner}
+ * aggregate root in the PetClinic domain. By extending {@link JpaRepository} it inherits
+ * the standard set of CRUD operations ({@code save}, {@code findAll}, {@code deleteById},
+ * etc.) as well as pagination and sorting support, so the controller layer does not need
+ * to know anything about JPA, {@code EntityManager}, or transactional boundaries — Spring
+ * Data generates a proxy implementation of this interface at application startup.
+ * </p>
+ *
+ * <p>
+ * Two additional finder methods are declared explicitly:
+ * </p>
+ * <ul>
+ * <li>{@link #findByLastNameStartingWith(String, Pageable)} — used by
+ * {@code OwnerController.processFindForm} to perform a paginated prefix search over
+ * surnames when the user submits the "Find Owners" form.</li>
+ * <li>{@link #findById(Integer)} — overrides the default {@code JpaRepository.findById}
+ * signature in order to document the {@link Optional}-returning contract that the
+ * controller layer relies on (it calls
+ * {@link Optional#orElseThrow(java.util.function.Supplier)} to surface a meaningful error
+ * when an unknown id is requested).</li>
+ * </ul>
+ *
+ * <p>
+ * All method names follow the Spring Data query-derivation naming conventions described
+ * in the reference documentation, so additional finders can be added simply by declaring
+ * a method signature here. See: <a href=
+ * "https://docs.spring.io/spring-data/jpa/docs/current/reference/html/#repositories.query-methods.query-creation">Spring
+ * Data JPA — Query Creation</a>.
+ * </p>
+ *
+ * <p>
+ * Because Owner has a {@code @OneToMany} cascade-all relationship with {@code Pet}, and
+ * Pet in turn has a {@code @OneToMany} cascade-all relationship with {@code Visit}, a
+ * single {@link #save(Object)} call against an {@code Owner} persists the entire object
+ * graph (owner → pets → visits) in one transaction.
+ * </p>
  *
  * @author Ken Krebs
  * @author Juergen Hoeller
@@ -36,26 +71,48 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface OwnerRepository extends JpaRepository<Owner, Integer> {
 
 	/**
-	 * Retrieve {@link Owner}s from the data store by last name, returning all owners
-	 * whose last name <i>starts</i> with the given name.
-	 * @param lastName Value to search for
-	 * @return a Collection of matching {@link Owner}s (or an empty Collection if none
-	 * found)
+	 * Retrieve {@link Owner}s from the data store whose last name <em>starts with</em>
+	 * the given prefix, returned as a {@link Page} for pagination support.
+	 *
+	 * <p>
+	 * This finder is invoked by {@code OwnerController.processFindForm} when the user
+	 * submits the "Find Owners" form. The prefix match is case-sensitive and translates
+	 * to a SQL {@code LIKE 'prefix%'} clause behind the scenes. Passing an empty string
+	 * therefore matches every owner — this is intentional and is what powers the "browse
+	 * all owners" behaviour when the form is submitted with no surname.
+	 * </p>
+	 * @param lastName the surname prefix to search for; an empty string matches every
+	 * owner
+	 * @param pageable pagination and sorting information; must not be {@code null}. Use
+	 * {@link Pageable#unpaged()} to retrieve all matches in a single page.
+	 * @return a {@link Page} of matching {@link Owner}s — never {@code null}; the page
+	 * will be empty (not {@code null}) if no owners match.
 	 */
 	Page<Owner> findByLastNameStartingWith(String lastName, Pageable pageable);
 
 	/**
-	 * Retrieve an {@link Owner} from the data store by id.
+	 * Retrieve a single {@link Owner} from the data store by its primary key.
+	 *
 	 * <p>
-	 * This method returns an {@link Optional} containing the {@link Owner} if found. If
-	 * no {@link Owner} is found with the provided id, it will return an empty
-	 * {@link Optional}.
+	 * This declaration overrides the default {@link JpaRepository#findById(Object)}
+	 * signature purely to document the {@link Optional}-returning contract that the
+	 * controller layer depends on. Controllers typically unwrap the {@link Optional} with
+	 * {@link Optional#orElseThrow(java.util.function.Supplier)} to throw an
+	 * {@link IllegalArgumentException} (mapped to an HTTP 400/404 by Spring's default
+	 * error handling) when an owner id from the URL does not exist.
 	 * </p>
-	 * @param id the id to search for
-	 * @return an {@link Optional} containing the {@link Owner} if found, or an empty
-	 * {@link Optional} if not found.
-	 * @throws IllegalArgumentException if the id is null (assuming null is not a valid
-	 * input for id)
+	 *
+	 * <p>
+	 * The returned {@code Owner}, if present, is fully initialised: because the
+	 * {@code pets} association uses {@code FetchType.EAGER}, the owner's pets (and, via
+	 * cascade, their visits) are loaded in the same query. Callers can therefore safely
+	 * navigate the object graph after the transaction has closed.
+	 * </p>
+	 * @param id the primary key of the owner to load
+	 * @return an {@link Optional} containing the {@link Owner} if one exists with the
+	 * given id, or an empty {@link Optional} if no such owner is present in the data
+	 * store
+	 * @throws IllegalArgumentException if {@code id} is {@code null}
 	 */
 	Optional<Owner> findById(Integer id);
 
